@@ -1,0 +1,29 @@
+{
+  "name": "yanhe-replay",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "延河课堂新旧平台回放播放器，支持歌词式字幕与手动时间校准。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1whoarei1/yanhe-replay.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tools/browser-test.mjs && node tools/legacy-browser-test.mjs",
+    "test:fixtures": "node tools/generate-fixtures.mjs",
+    "package": "python tools/package.py"
+  },
+  "dependencies": {
+    "blueimp-md5": "2.19.0",
+    "hls.js": "1.7.3"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

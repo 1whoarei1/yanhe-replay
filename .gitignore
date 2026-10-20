@@ -1,0 +1,12 @@
+node_modules/
+test-results/
+tests/fixtures/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+__pycache__/
+.DS_Store
+Thumbs.db
+*.zip
