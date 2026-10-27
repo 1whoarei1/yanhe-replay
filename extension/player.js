@@ -1,6 +1,10 @@
+import { Companion } from './companion.js';
+import {mountCourseBrowser} from './course-browser.js';
 import { YanheApi } from './api.js';
 import { LegacyYanheApi } from './legacy-api.js';
 import { parseCourse, clock, vtt, explain, subtitleOffset, shiftSubtitles, subtitleClock } from './core.js';
+import { liveLabels, liveEdge } from './live-core.js';
+import {replayViews} from './media-download.js';
 
 const $ = id => document.getElementById(id);
 const video = $('video');
@@ -9,7 +13,30 @@ const state = { course: null, selected: null, info: null, view: 'screen', subtit
   sequence: 0, mediaEpoch: 0, hls: null, attached: false, connecting: false, restoring: false,
   resume: 0, lastSigned: 0, lastRecovery: 0, lastSaved: 0, activeCue: -1, vttUrl: null, courseLoading: false,
   blockedViews: new Set(), sourceNote: '', followLyrics: true, lyricFrame: 0,
-  rawSubtitles: [], offsets: { screen: 0, classroom: 0 }, calibrating: false, offsetSave: Promise.resolve() };
+  rawSubtitles: [], offsets: { screen: 0, classroom: 0 }, calibrating: false, offsetSave: Promise.resolve(), filter: 'replay', flv: null };
+const secondary=$('secondary-video');let dual=false;
+const companion=new Companion(video,secondary,{getApi:()=>api,getInfo:()=>state.info,getView:()=>state.view,getHls:()=>state.hls,onError:text=>{dual=false;updateDual();playbackStatus(text+'，保留单画面',true);}});
+function updateDual(){
+ const available=['screen','classroom'].every(view=>state.info?.streams[view]&&!state.blockedViews.has(view));
+ if(!available)dual=false;
+ $('dual').disabled=!available;$('dual').setAttribute('aria-pressed',String(dual));
+ $('media-grid').classList.toggle('dual',dual);$('secondary-stage').hidden=!dual;$('audio-label').hidden=!dual;$('dual-fullscreen').hidden=!dual;
+ if(!dual){companion.stop();return;}
+ const alternate=state.view==='screen'?'classroom':'screen';$('secondary-label').textContent=viewName(alternate);
+ if(state.attached&&!state.connecting)void companion.start(alternate,$('audio-source').value);
+}
+$('dual').addEventListener('click',()=>{dual=!dual;if(dual){if(state.view==='student'){state.view='classroom';updateViews();if(state.attached)void connectPlayback(video.currentTime,{play:!video.paused});}$('audio-source').value=state.view==='classroom'?'classroom':'screen';}updateDual();});
+$('audio-source').addEventListener('change',()=>companion.setAudio($('audio-source').value));
+$('dual-fullscreen').addEventListener('click',()=>{if(document.fullscreenElement)void document.exitFullscreen();else void $('media-grid').requestFullscreen().catch(()=>{});});
+for(const [id,cls]of [['toggle-lectures','hide-lectures'],['toggle-subtitles','hide-transcript']])$(id).addEventListener('click',()=>{const hidden=document.querySelector('.workspace').classList.toggle(cls);$(id).setAttribute('aria-pressed',String(!hidden));});
+const views = ['screen','classroom','student'];
+function isLive() { return state.info?.mode === 'live'; }
+function liveContext() { return state.info && state.info.mode && state.info.mode !== 'replay'; }
+$('download-video').addEventListener('click',()=>{
+ if(!state.course||!state.selected||!replayViews(state.info).length)return;
+ const params=new URLSearchParams({platform:state.course.legacy?'legacy':'modern',course:state.course.id,lecture:state.selected.id,view:dual?'all':state.view});
+ void chrome.tabs.create({url:chrome.runtime.getURL('download.html')+'?'+params});
+});
 
 function message(text, kind = '') { $('message').textContent = text; $('message').className = `notice ${kind}`; }
 function playbackStatus(text, error = false) { $('playback-status').textContent = text; $('playback-status').className = `playback-status${error ? ' error' : ''}`; }
@@ -18,9 +45,9 @@ const storage = {
   async set(values) { try { await chrome.storage.local.set(values); return true; } catch { return false; } }
 };
 function courseKey() { return `${state.course?.legacy ? 'legacy:' : ''}${state.course?.id}`; }
-function progressKey() { return state.course && state.selected ? `progress:${courseKey()}:${state.selected.id}` : null; }
-function offsetKey(view = state.view) { return state.course && state.selected ? `subtitleOffset:${courseKey()}:${state.selected.id}:${view}` : null; }
-function viewName(view) { return view === 'screen' ? '屏幕画面' : state.course?.legacy ? '主画面' : '教室画面'; }
+function progressKey() { return !liveContext() && state.course && state.selected ? `progress:${courseKey()}:${state.selected.id}` : null; }
+function offsetKey(view = state.view) { return !liveContext() && state.course && state.selected ? `subtitleOffset:${courseKey()}:${state.selected.id}:${view}` : null; }
+function viewName(view) { return view === 'student' ? '学生画面' : view === 'screen' ? '屏幕画面' : state.course?.legacy || liveContext() ? '主画面' : '教室画面'; }
 function savedOffset(value) { try { return subtitleOffset(value?.seconds ?? 0); } catch { return 0; } }
 function saveProgress(force = false) {
   const key = progressKey();
@@ -29,8 +56,9 @@ function saveProgress(force = false) {
   void storage.set({ [key]: { time: video.currentTime, view: state.view, updatedAt: Date.now() } });
 }
 function clearMedia() {
-  state.mediaEpoch++; state.connecting = false; state.restoring = false;
+  companion.stop();state.mediaEpoch++; state.connecting = false; state.restoring = false;
   if (state.hls) { state.hls.destroy(); state.hls = null; }
+  if (state.flv) { state.flv.destroy(); state.flv = null; }
   video.pause(); video.removeAttribute('src'); video.load(); state.attached = false;
   clearCaptionTracks();
 }
@@ -41,14 +69,17 @@ function clearCaptionTracks() {
   if (state.vttUrl) { URL.revokeObjectURL(state.vttUrl); state.vttUrl = null; }
 }
 function resetSelection() {
+  $('download-video').disabled=true;
   saveProgress(true); state.controller?.abort(); clearMedia(); state.selected = null; state.info = null; state.subtitles = []; state.rawSubtitles = [];
-  state.offsets = { screen: 0, classroom: 0 }; state.calibrating = false;
+  dual=false;updateDual();state.offsets = { screen: 0, classroom: 0 }; state.calibrating = false;
   state.blockedViews.clear(); state.sourceNote = '';
   $('stage-empty').classList.remove('hidden'); $('stage-label').textContent = '选择课次';
   $('stage-detail').textContent = '';
-  $('play').disabled = true; $('retry').disabled = true;
+  $('play').disabled = true; $('retry').disabled = true; $('retry').textContent = '重新连接';
   $('lecture-title').textContent = '尚未选择课次'; $('duration').textContent = '';
-  for (const view of ['screen','classroom']) { $(view).disabled = true; $(view).setAttribute('aria-pressed','false'); }
+  for (const view of views) { $(view).disabled = true; $(view).setAttribute('aria-pressed','false'); }
+  $('student').hidden = true; $('go-live').hidden = true; $('go-live').disabled = true; $('speed').disabled = false;
+  document.querySelector('.workspace').classList.remove('live-mode');
   $('subtitle-search').value = ''; $('subtitle-search').disabled = true; $('subtitle-count').textContent = '—';
   cancelAnimationFrame(state.lyricFrame); state.lyricFrame = 0; state.followLyrics = true; state.activeCue = -1;
   $('show-captions').disabled = true; $('return-sync').hidden = true;
@@ -60,12 +91,18 @@ function resetSelection() {
 function textNode(tag, text, className) { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; }
 function renderLectures() {
   const list = $('lecture-list'); list.replaceChildren();
-  $('replay-count').textContent = `${state.course.replays.length} 次`;
-  if (!state.course.replays.length) { list.append(textNode('p','暂无回放','empty')); return; }
-  for (const lecture of state.course.replays) {
+  const rows = state.filter === 'live' ? state.course.lives || [] : state.course.replays;
+  $('replay-count').textContent = `${rows.length} 次`;
+  $('filter-live').hidden = false;
+  for (const filter of ['replay','live']) $(`filter-${filter}`).setAttribute('aria-pressed',String(filter === state.filter));
+  if (!rows.length) { list.append(textNode('p',state.filter === 'live' ? '暂无直播安排' : '暂无回放','empty')); return; }
+  for (const lecture of rows) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'lecture-item'; button.dataset.id = lecture.id;
     const match = lecture.title.match(/^(\d{4})-(\d+)-(\d+)(.+)$/);
-    button.append(textNode('strong',match ? `${Number(match[2])}月${Number(match[3])}日` : lecture.title), textNode('span',match ? `${match[1]}年 ${match[4]}` : '课程回放'));
+    button.append(textNode('strong',match ? `${Number(match[2])}月${Number(match[3])}日` : lecture.title));
+    if (match || !lecture.mode) button.append(textNode('span',match ? `${match[1]}年 ${match[4]}` : '课程回放'));
+    if (lecture.mode) button.append(textNode('small',liveLabels[lecture.mode],`lecture-state ${lecture.mode}`));
+    if (state.selected?.id === lecture.id) { button.classList.add('selected'); button.setAttribute('aria-current','true'); }
     button.addEventListener('click',() => selectLecture(lecture)); list.append(button);
   }
 }
@@ -185,19 +222,21 @@ function attachCaptions() {
   track.default = $('show-captions').checked; video.append(track); track.track.mode = $('show-captions').checked ? 'showing' : 'disabled';
 }
 function updateViews() {
-  for (const view of ['screen','classroom']) {
+  $('dual').disabled=!['screen','classroom'].every(v=>state.info?.streams[v]&&!state.blockedViews.has(v));
+  if($('dual').disabled&&dual){dual=false;updateDual();}
+  for (const view of views) {
+    if (view === 'student') $(view).hidden = !state.info?.streams.student;
     $(view).disabled = !state.info?.streams[view] || state.blockedViews.has(view);
     $(view).textContent = `${viewName(view)}${state.blockedViews.has(view) ? '（源失效）' : ''}`;
     $(view).setAttribute('aria-pressed',String(state.view === view));
   }
 }
 
-async function loadCourse() {
-  if (state.courseLoading) return;
+async function loadCourse(force=false) {
   let ref;
-  try { ref = parseCourse($('course-input').value); if (/^\d+$/.test($('course-input').value.trim())) ref.legacy = $('platform').value === 'legacy'; }
+  try { ref = parseCourse($('course-input').value,$('platform').value); }
   catch (error) { message(explain(error),'error'); return; }
-  resetSelection(); const sequence = ++state.sequence; state.controller = new AbortController(); state.courseLoading = true;
+  resetSelection(); const sequence = ++state.sequence,loadEpoch=state.loadEpoch=(state.loadEpoch||0)+1; state.controller = new AbortController(); state.courseLoading = true;
   api.reset(); api = ref.legacy ? new LegacyYanheApi() : new YanheApi();
   $('platform').value = ref.legacy ? 'legacy' : 'modern';
   $('site-link').href = ref.legacy ? 'https://www.yanhekt.cn/' : 'https://aita.yanhekt.cn/';
@@ -206,33 +245,65 @@ async function loadCourse() {
   try {
     const rules = await chrome.runtime.sendMessage({ type: 'ENSURE_RULES' });
     if (!rules?.ok) throw new Error('插件的播放请求配置未准备好。请在扩展管理页面重新加载本插件。');
-    const course = await api.course(ref.id,state.controller.signal);
+    if (ref.legacy) ref=await api.resolve(ref,state.controller.signal);
+    if (sequence !== state.sequence) return;
+    let course;
+    if(ref.legacy&&ref.liveId)course=await api.liveCourse(ref,state.controller.signal);
+    else course=await api.course(ref.id,state.controller.signal,{force});
     if (sequence !== state.sequence) return;
     state.course = course; $('course-title').textContent = course.title;
+    const locationUrl=new URL(location.href);locationUrl.search='';
+    if(ref.liveId)locationUrl.searchParams.set('legacy_live',ref.liveId);else if(ref.sessionId)locationUrl.searchParams.set('legacy_session',ref.sessionId);else locationUrl.searchParams.set(ref.legacy?'legacy':'course',course.id);
+    if(ref.subId)locationUrl.searchParams.set('sub_id',ref.subId);history.replaceState(null,'',locationUrl);
     $('course-meta').textContent = [course.teacher,course.term,`课程 ID ${course.id}`].filter(Boolean).join(' / ');
     $('connection').textContent = '已连接延河课堂'; $('connection').classList.add('online');
+    state.filter = ref.liveId || (!ref.legacy && (ref.subId || (!(course.replays || []).length && course.lives?.length))) ? 'live' : 'replay';
+    const previous=await storage.get('lastLecture:'+courseKey());if(sequence!==state.sequence)return;
+    const target = ref.liveId ? course.lives.find(row=>row.id==='live:'+ref.liveId) : ref.sessionId ? course.replays.find(row=>row.id.split(':')[0]===ref.sessionId) : ref.subId ? [...course.replays,...course.lives || []].find(row => row.id === ref.subId) : course.replays.find(row=>row.id===previous);
+    if (target && !target.mode) state.filter = 'replay';
     message(''); renderLectures();
     $('subtitle-list').append(textNode('p','暂无字幕','empty'));
     playbackStatus('等待选择课次'); await storage.set({ lastCourse: course.id, lastPlatform: ref.legacy ? 'legacy' : 'modern' });
+    if (sequence === state.sequence && (ref.subId || target)) void selectLecture(target || {id:ref.subId,title:`课次 ${ref.subId}`});
+    else if (ref.sessionId) message('当前课次暂无回放，已载入所属课程。');
   } catch (error) {
     if (sequence !== state.sequence) return;
     message(explain(error),'error'); $('connection').textContent = '尚未连接'; $('connection').classList.remove('online');
     $('course-title').textContent = '暂时无法读取课程'; $('course-meta').textContent = '';
     $('replay-count').textContent = '—'; $('lecture-list').replaceChildren(textNode('p','未连接','empty'));
-  } finally { if (sequence === state.sequence) { state.courseLoading = false; $('load-course').disabled = false; $('load-course').textContent = '读取课程'; } }
+  } finally { if(loadEpoch===state.loadEpoch){state.courseLoading = false; $('load-course').disabled = false; $('load-course').textContent = '读取课程';} }
 }
 
 async function selectLecture(lecture) {
   if (!state.course) return;
   resetSelection(); const sequence = ++state.sequence; state.controller = new AbortController(); const signal = state.controller.signal;
   state.selected = lecture; state.resume = 0; state.lastRecovery = 0; state.lastSaved = 0;
+  $('retry').disabled = false;
   document.querySelectorAll('.lecture-item').forEach(button => { button.classList.toggle('selected',button.dataset.id === lecture.id); button.setAttribute('aria-current',String(button.dataset.id === lecture.id)); });
-  $('lecture-title').textContent = lecture.title; $('stage-label').textContent = '正在读取播放信息'; $('stage-detail').textContent = '正在检查可用画面与平台字幕。';
+  $('lecture-title').textContent = lecture.title; $('stage-label').textContent = '正在读取播放信息'; $('stage-detail').textContent = '';
   playbackStatus('正在读取本课次信息…');
   try {
     const info = await api.lecture(state.course.id,lecture.id,signal);
     if (sequence !== state.sequence) return;
     state.info = info;
+    $('download-video').disabled=!replayViews(info).length;
+    if(!info.mode||info.mode==='replay')void storage.set({['lastLecture:'+courseKey()]:lecture.id});
+    if (info.title) $('lecture-title').textContent = info.title;
+    document.querySelector('.workspace').classList.toggle('live-mode',Boolean(liveContext()));
+    $('speed').disabled = Boolean(liveContext()); $('go-live').hidden = !isLive();
+    if (liveContext()) {
+      $('retry').textContent = '刷新课次';
+      $('duration').textContent = liveLabels[info.mode]; $('retry').disabled = false;
+      $('subtitle-list').replaceChildren(textNode('p','直播暂无字幕','empty'));
+      if (!isLive() || !Object.keys(info.streams).length) {
+        $('stage-label').textContent = info.mode === 'upcoming' ? '直播尚未开始' : info.mode === 'ended' ? '直播已结束' : '直播源暂未就绪';
+        $('stage-detail').textContent = '点击刷新课次重试'; playbackStatus($('stage-label').textContent); updateViews(); return;
+      }
+      state.view = info.streams.classroom ? 'classroom' : Object.keys(info.streams)[0];
+      video.playbackRate = 1; state.resume = 0;
+      $('play').textContent = '播放直播'; $('play').disabled = false;
+      $('stage-label').textContent = '直播已就绪'; $('stage-detail').textContent = ''; updateViews(); playbackStatus('待播放'); return;
+    }
     if (!Object.keys(info.streams).length) throw new Error('平台尚未提供可播放画面。请在原站确认回放是否已生成。');
     await state.offsetSave;
     if (sequence !== state.sequence) return;
@@ -258,6 +329,26 @@ async function selectLecture(lecture) {
   }
 }
 
+async function liveSource(signal) {
+  const order = [state.view,...views.filter(view => view !== state.view)];
+  let lastStatus = '', failed = false;
+  for (const view of order) {
+    for (const candidate of state.info.candidates?.[view] || []) {
+      if (candidate.format === 'flv' && !globalThis.mpegts?.isSupported()) continue;
+      try {
+        const result = await api.probeMedia(candidate.url,signal);
+        signal.throwIfAborted();
+        if (result.ok) {
+          state.view = view; state.sourceNote = failed ? '已切换可用直播源。' : ''; updateViews();
+          return candidate;
+        }
+        lastStatus = `（HTTP ${result.status}）`; failed = true;
+      } catch (error) { signal.throwIfAborted(); lastStatus = explain(error); failed = true; }
+    }
+  }
+  throw new Error(`直播源暂时不可用${lastStatus}。请刷新课次重试。`);
+}
+
 async function connectPlayback(time = state.resume, { refresh = false, play = true, automatic = false } = {}) {
   if (!state.selected || !state.info) return;
   const sequence = state.sequence; const courseId = state.course.id, subId = state.selected.id;
@@ -265,17 +356,28 @@ async function connectPlayback(time = state.resume, { refresh = false, play = tr
   $('stage-empty').classList.add('hidden'); playbackStatus(refresh ? '正在重新获取播放地址…' : '正在连接视频…');
   try {
     await api.authenticate({ signal: state.controller.signal, force: refresh });
-    if (refresh) {
+    await api.prepareMedia?.(state.controller.signal);
+    // Refresh the actual account and platform source metadata on live reconnects.
+    if (refresh || liveContext()) {
+      const previousMode = state.info.mode || 'replay';
       const info = await api.lecture(courseId,subId,state.controller.signal);
       if (epoch !== state.mediaEpoch || sequence !== state.sequence) return;
       state.info = info;
+      if (previousMode !== (info.mode || 'replay') || (liveContext() && (!isLive() || !Object.keys(info.streams).length))) {
+        state.connecting = false; void selectLecture(state.selected); return;
+      }
       if (!automatic) { state.blockedViews.clear(); state.sourceNote = ''; }
       updateViews();
     }
     if (epoch !== state.mediaEpoch || sequence !== state.sequence) return;
     let source = state.info.streams[state.view];
+    if (isLive()) {
+      const candidate = await liveSource(state.controller.signal);
+      if (epoch !== state.mediaEpoch || sequence !== state.sequence) return;
+      source = candidate.url; state.resume = 0;
+    }
     if (!source) throw new Error('当前画面不可用，请切换另一种画面。');
-    const probe = await api.probeMedia(source,state.controller.signal);
+    const probe = isLive() ? {ok:true} : await api.probeMedia(source,state.controller.signal);
     if (epoch !== state.mediaEpoch || sequence !== state.sequence) return;
     if (!probe.ok) {
       const failedView = state.view, alternate = failedView === 'screen' ? 'classroom' : 'screen';
@@ -292,14 +394,28 @@ async function connectPlayback(time = state.resume, { refresh = false, play = tr
       state.sourceNote = `${failure}，已切换${viewName(alternate)}。`; updateViews();
       playbackStatus(state.sourceNote);
     }
-    const url = api.sign(source); state.lastSigned = Date.now(); state.attached = true; attachCaptions(); updateCalibration();
-    if (new URL(source).pathname.toLowerCase().endsWith('.mp4')) {
+    const url = api.sign(source); state.lastSigned = Date.now(); state.attached = true; attachCaptions(); updateCalibration(); $('retry').textContent = '重新连接';
+    if (isLive() && new URL(source).pathname.toLowerCase().endsWith('.flv')) {
+      if (!globalThis.mpegts?.isSupported()) throw new Error('当前浏览器不支持此 FLV 直播。');
+      mpegts.LoggingControl.enableAll = false;
+      const flv = mpegts.createPlayer({ type:'flv', isLive:true, url, cors:true, withCredentials:true }, {
+        enableWorker:false, enableStashBuffer:false, lazyLoad:false,
+        autoCleanupSourceBuffer:true, autoCleanupMaxBackwardDuration:30, autoCleanupMinBackwardDuration:15
+      });
+      state.flv = flv;
+      flv.on(mpegts.Events.ERROR,(type,detail,info) => {
+        if (epoch === state.mediaEpoch) handleMediaError(type === mpegts.ErrorTypes.NETWORK_ERROR ? 'network' : 'decode',Number(info?.code) || 0);
+      });
+      flv.attachMediaElement(video); flv.load();
+    }
+    else if (new URL(source).pathname.toLowerCase().endsWith('.mp4')) {
       // This path is entered only after playback was explicitly requested. Metadata is also needed for a paused view switch.
       video.preload = 'metadata'; video.src = url;
     }
     else if (globalThis.Hls?.isSupported()) {
       const mediaApi=api, mediaSignal=state.controller.signal;
-      const hls = new Hls({ enableWorker: false, maxBufferLength: 20, maxMaxBufferLength: 30, backBufferLength: 15, maxBufferSize: 32 * 1024 * 1024,
+      const hls = new Hls({ enableWorker: false, lowLatencyMode:isLive(), liveSyncDurationCount:3, liveMaxLatencyDurationCount:8,
+        maxBufferLength: 20, maxMaxBufferLength: 30, backBufferLength: 15, maxBufferSize: 32 * 1024 * 1024,
         async xhrSetup(xhr, requestUrl) { await mediaApi.prepareMedia?.(mediaSignal); mediaSignal.throwIfAborted();xhr.open('GET',mediaApi.sign(requestUrl),true); xhr.withCredentials = true; } });
       state.hls = hls;
       hls.on(Hls.Events.ERROR,(_event,data) => { if (data.fatal && epoch === state.mediaEpoch) {
@@ -328,13 +444,26 @@ function handleMediaError(kind, status = 0) {
     `视频连接失败${status ? `（HTTP ${status}）` : ''}。请检查校园网 / VPN、代理绕过，再点击重新连接。`,true);
 }
 
-$('course-form').addEventListener('submit',event => { event.preventDefault(); void loadCourse(); });
+$('course-form').addEventListener('submit',event => { event.preventDefault(); void loadCourse(true); });
+mountCourseBrowser({onSelect:course=>{
+ $('platform').value='modern';$('course-input').value=course.url;
+ void loadCourse();
+}});
 $('play').addEventListener('click',() => { state.lastRecovery = 0; void connectPlayback(state.resume); });
-$('retry').addEventListener('click',() => { state.lastRecovery = 0; void connectPlayback(video.currentTime || state.resume,{refresh:true}); });
-for (const view of ['screen','classroom']) $(view).addEventListener('click',() => {
-  if (state.view === view || !state.info?.streams[view]) return;
+$('retry').addEventListener('click',() => { state.lastRecovery = 0; if (state.selected && (!state.info || (liveContext() && !state.attached))) void selectLecture(state.selected); else void connectPlayback(video.currentTime || state.resume,{refresh:true}); });
+for (const filter of ['replay','live']) $(`filter-${filter}`).addEventListener('click',() => { state.filter = filter; if (state.course) renderLectures(); });
+$('refresh-list').addEventListener('click',() => { if (state.courseLoading) return; void loadCourse(true); });
+$('go-live').addEventListener('click',() => {
+  if (!isLive() || !state.attached) return;
+  const target = liveEdge(video,state.hls);
+  if (target != null) { video.currentTime = target; void video.play().catch(() => playbackStatus('请点击视频播放按钮')); }
+  else void connectPlayback(0,{refresh:true});
+});
+for (const view of views) $(view).addEventListener('click',() => {
+  if (!state.info?.streams[view]) return;
+  if(dual){dual=false;updateDual();}if(state.view===view)return;
   const time = video.currentTime || state.resume, playing = state.attached && !video.paused, attached = state.attached;
-  saveProgress(true); state.view = view; state.calibrating = false; $('calibration-status').textContent = ''; applyTimeline(); updateViews();
+  saveProgress(true); state.view = view; state.calibrating = false; $('calibration-status').textContent = ''; if (!liveContext()) applyTimeline(); updateViews();
   if (attached) void connectPlayback(time,{play:playing});
   else { $('stage-label').textContent = `${viewName(view)}已就绪`; }
 });
@@ -364,16 +493,19 @@ new ResizeObserver(() => {
 $('show-captions').addEventListener('change',() => { for (const track of video.querySelectorAll('track')) track.track.mode = $('show-captions').checked ? 'showing' : 'disabled'; });
 video.addEventListener('loadedmetadata',() => {
   if (!state.attached) return;
-  video.playbackRate = Number($('speed').value);
-  if (state.resume > 0 && Number.isFinite(video.duration)) { state.restoring = true; video.currentTime = Math.min(state.resume,Math.max(0,video.duration - 0.1)); }
+  video.playbackRate = isLive() ? 1 : Number($('speed').value);
+  $('go-live').disabled = !isLive();
+  if (!isLive() && state.resume > 0 && Number.isFinite(video.duration)) { state.restoring = true; video.currentTime = Math.min(state.resume,Math.max(0,video.duration - 0.1)); }
   state.connecting = false;
+  if(dual)updateDual();
   if (!state.restoring) saveProgress(true);
 });
-video.addEventListener('playing',() => { state.connecting = false; playbackStatus(`${state.sourceNote}${state.sourceNote ? ' ' : ''}正在播放${viewName(state.view)}`); });
-video.addEventListener('timeupdate',() => { updateActiveCue(); saveProgress(); });
+video.addEventListener('playing',() => { state.connecting = false; playbackStatus(`${state.sourceNote}${state.sourceNote ? ' ' : ''}正在${isLive() ? '直播' : '播放'}${viewName(state.view)}`); });
+video.addEventListener('timeupdate',() => { if (!liveContext()) updateActiveCue(); saveProgress(); });
+video.addEventListener('ended',() => { if (isLive()) playbackStatus('直播流已结束，可刷新课次查看回放。'); });
 video.addEventListener('pause',() => saveProgress(true));
 video.addEventListener('seeking',() => {
-  if (state.attached && !state.hls && !state.connecting && !state.restoring && Date.now() - state.lastSigned > 45000)
+  if (!isLive() && state.attached && !state.hls && !state.connecting && !state.restoring && Date.now() - state.lastSigned > 45000)
     void connectPlayback(video.currentTime,{play:!video.paused});
 });
 video.addEventListener('seeked',() => { state.restoring = false; updateActiveCue(); saveProgress(true); if (state.followLyrics) scheduleLyricCenter(); });
@@ -381,7 +513,15 @@ video.addEventListener('error',() => { if (state.attached) handleMediaError(vide
 window.addEventListener('pagehide',() => { saveProgress(true); state.controller?.abort(); clearMedia(); api.reset(); });
 
 const params = new URLSearchParams(location.search);
+const legacyLive = params.get('legacy_live'), legacySession = params.get('legacy_session');
+const source = params.get('source') || (/^\d{1,12}$/.test(legacyLive || '') ? `https://www.yanhekt.cn/live/${legacyLive}` : /^\d{1,12}$/.test(legacySession || '') ? `https://www.yanhekt.cn/session/${legacySession}` : null);
 const course = params.get('legacy') || params.get('course') || await storage.get('lastCourse');
-const legacy = params.has('legacy') || (!params.has('course') && await storage.get('lastPlatform') === 'legacy');
+const legacy = Boolean(legacyLive || legacySession) || (source ? source.startsWith('https://www.yanhekt.cn/') : params.has('legacy') || (!params.has('course') && await storage.get('lastPlatform') === 'legacy'));
 $('platform').value = legacy ? 'legacy' : 'modern';
-if (/^\d{1,12}$/.test(course || '')) { $('course-input').value = legacy ? `https://www.yanhekt.cn/course/${course}` : course; void loadCourse(); }
+$('site-link').href = legacy ? 'https://www.yanhekt.cn/' : 'https://aita.yanhekt.cn/';
+if (source) { $('course-input').value=source;void loadCourse(params.get('refresh')==='1'); }
+else if (/^\d{1,12}$/.test(course || '')) {
+  const subId = params.get('sub_id');
+  $('course-input').value = legacy ? `https://www.yanhekt.cn/course/${course}` : /^\d{1,12}$/.test(subId || '') ? `https://aita.yanhekt.cn/livingroom?course_id=${course}&sub_id=${subId}` : course;
+  void loadCourse(params.get('refresh')==='1');
+}

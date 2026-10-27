@@ -8,6 +8,9 @@ await mkdir(resolve(extension,'vendor'),{recursive:true});
 for (const [source,target] of [
   ['node_modules/hls.js/dist/hls.light.min.js','hls.light.min.js'],
   ['node_modules/hls.js/LICENSE','hls.LICENSE'],
+  ['node_modules/mpegts.js/dist/mpegts.js','mpegts.min.js'],
+  ['node_modules/mpegts.js/LICENSE','mpegts.LICENSE'],
+  ['node_modules/mpegts.js/dist/mpegts.js.LICENSE.txt','mpegts.NOTICE.txt'],
   ['node_modules/blueimp-md5/js/md5.min.js','md5.min.js'],
   ['node_modules/blueimp-md5/LICENSE.txt','md5.LICENSE']
 ]) await copyFile(resolve(root,source),resolve(extension,'vendor',target));

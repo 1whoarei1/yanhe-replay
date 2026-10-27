@@ -3,6 +3,14 @@
 Yanhe Replay's own code is distributed under the [MIT License](LICENSE).
 Third-party components retain their original licenses.
 
+## Shared playback implementation
+
+[1whoarei1/yanhe-refine](https://github.com/1whoarei1/yanhe-refine), v0.9.3
+(revision `8a292f47d7f25a697d01c9bd7c69189ce2edbf5a`, MIT), is the source of the
+backported dual playback, media downloader, replay cache, legacy live support
+and course metadata normalization. Replay retains its independent interface.
+Protocol documentation: [yanhe-api-reference](https://github.com/1whoarei1/yanhe-api-reference).
+
 ## Protocol references
 
 - [windlandneko/yanhekit](https://github.com/windlandneko/yanhekit): reference for
@@ -25,6 +33,7 @@ and tooling easier to understand.
 | Component | Purpose | License and included notice |
 | --- | --- | --- |
 | [video-dev/hls.js](https://github.com/video-dev/hls.js) 1.7.3 | HLS playback | Apache-2.0, [extension/vendor/hls.LICENSE](extension/vendor/hls.LICENSE) |
+| [xqq/mpegts.js](https://github.com/xqq/mpegts.js) 1.8.2 | FLV live playback | Apache-2.0, [extension/vendor/mpegts.LICENSE](extension/vendor/mpegts.LICENSE); bundled dependency notice: [extension/vendor/mpegts.NOTICE.txt](extension/vendor/mpegts.NOTICE.txt) |
 | [blueimp/JavaScript-MD5](https://github.com/blueimp/JavaScript-MD5) 2.19.0 | Platform request signing | MIT, [extension/vendor/md5.LICENSE](extension/vendor/md5.LICENSE) |
 
 `tools/build.mjs` copies these files from the pinned npm packages. No vendor

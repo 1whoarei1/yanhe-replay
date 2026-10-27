@@ -1,9 +1,9 @@
 {
   "name": "yanhe-replay",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "延河课堂新旧平台回放播放器，支持歌词式字幕与手动时间校准。",
+  "description": "延河课堂独立播放器：全校课程搜索、回放与直播、双画面、视频下载、歌词字幕与校准。",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,13 +15,17 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tools/browser-test.mjs && node tools/legacy-browser-test.mjs",
+    "test:browser": "node tools/browser-test.mjs && node tools/legacy-browser-test.mjs && node tools/live-browser-test.mjs && node tools/upgrade-browser-test.mjs && node tools/video-download-browser-test.mjs",
+    "test:browser:live": "node tools/live-browser-test.mjs",
     "test:fixtures": "node tools/generate-fixtures.mjs",
-    "package": "python tools/package.py"
+    "package": "python tools/package.py",
+    "test:browser:upgrade": "node tools/upgrade-browser-test.mjs",
+    "test:browser:download": "node tools/video-download-browser-test.mjs"
   },
   "dependencies": {
     "blueimp-md5": "2.19.0",
-    "hls.js": "1.7.3"
+    "hls.js": "1.7.3",
+    "mpegts.js": "1.8.2"
   },
   "devDependencies": {
     "playwright": "1.62.1"

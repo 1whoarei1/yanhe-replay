@@ -3,11 +3,14 @@ from pathlib import Path
 import json
 import shutil
 import zipfile
+import hashlib
 
 project = Path(__file__).resolve().parents[1]
 source = project / 'extension'
 manifest = json.loads((source / 'manifest.json').read_text(encoding='utf-8'))
+assert manifest['version'] == json.loads((project / 'package.json').read_text(encoding='utf-8'))['version']
 release = project / "dist" / f"yanhe-replay-{manifest['version']}"
+assert release.resolve().parent == (project / 'dist').resolve()
 release.mkdir(parents=True, exist_ok=True)
 files = []
 for item in sorted(source.rglob('*')):
@@ -37,4 +40,7 @@ with zipfile.ZipFile(archive) as package:
     assert package.testzip() is None
     for relative in files:
         assert package.read(relative.as_posix()) == (release / relative).read_bytes()
-print(json.dumps({'version': manifest['version'], 'folder': str(release), 'zip': str(archive), 'files': len(files), 'verified': True}, ensure_ascii=False))
+report = {'version': manifest['version'], 'folder': str(release), 'zip': str(archive), 'files': len(files), 'bytes': archive.stat().st_size, 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'verified': True}
+(project / 'test-results').mkdir(exist_ok=True)
+(project / 'test-results' / 'package-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+print(json.dumps(report, ensure_ascii=False))

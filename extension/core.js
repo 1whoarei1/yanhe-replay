@@ -1,19 +1,31 @@
 // Modern platform protocol reference: https://github.com/windlandneko/yanhekit
 export const ORIGIN = 'https://aita.yanhekt.cn';
 
-export function parseCourse(value) {
-  const text = String(value ?? '').trim();
-  if (/^\d{1,12}$/.test(text)) return { id: text, legacy: false };
+export function parseCourse(value, platform = 'modern') {
+  let text = String(value ?? '').trim();
+  const markdown = text.match(/^\[[^\]\r\n]*\]\((https:\/\/[^\s()]+)\)$/);
+  if (markdown) text = markdown[1];
+  if (text.startsWith('<') && text.endsWith('>')) text = text.slice(1,-1).trim();
+  if (/^\d{1,12}$/.test(text)) return { id: text, legacy: platform === 'legacy' };
   let url;
-  try { url = new URL(text); } catch { throw new Error('请填写新版延河课堂课程链接，或数字课程 ID。'); }
+  try { url = new URL(text); } catch { throw new Error('请填写延河课堂课程、直播或回放链接，或数字课程 ID。'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.port) throw new Error('请使用延河课堂的 HTTPS 课程链接。');
   if (url.hostname === 'aita.yanhekt.cn') {
     const id = url.searchParams.get('course_id');
-    if (/^\d{1,12}$/.test(id ?? '')) return { id, legacy: false };
+    if (/^\d{1,12}$/.test(id ?? '')) {
+      const subId = url.searchParams.get('sub_id');
+      if (subId != null && !/^\d{1,12}$/.test(subId)) throw new Error('直播链接的课次 ID 无效。');
+      return { id, legacy: false, ...(subId ? { subId } : {}) };
+    }
   }
-  const old = url.hostname === 'www.yanhekt.cn' && url.pathname.match(/^\/course\/(\d{1,12})\/?$/);
-  if (old) return { id: old[1], legacy: true };
-  throw new Error('未找到新版课程 ID。请复制 aita.yanhekt.cn 的课程详情链接。');
+  if (url.hostname === 'www.yanhekt.cn') {
+    const old = url.pathname.match(/^\/(course|live|session|ReadSession)\/(\d{1,12})\/?$/);
+    if (old?.[1] === 'course') return { id: old[2], legacy: true };
+    if (old?.[1] === 'live') return { liveId: old[2], legacy: true };
+    if (old) return { sessionId: old[2], legacy: true };
+    throw new Error('未找到旧版课程、直播或回放编号，请复制完整页面地址。');
+  }
+  throw new Error('未找到受支持的延河课堂链接，请复制课程、直播或回放页面的完整地址。');
 }
 
 export function replayRows(tree) {
