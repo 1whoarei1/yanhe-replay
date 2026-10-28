@@ -28,3 +28,13 @@ test('invalid search input is rejected before HTTP; malformed search responses r
  const {api,calls}=fixture();for(const options of [{page:0},{page:Infinity},{term:'abc'},{college:'../2'}])await assert.rejects(api.search('',options));await assert.rejects(api.search('x'.repeat(513)));assert.equal(calls.length,0);
  api.fetcher=async()=>new Response(JSON.stringify({code:0,data:{list:null}}));await assert.rejects(api.search('示例'),/格式/);
 });
+
+test('modern API filter choices hide bare-year and pre-launch entries while retaining the trial IDs',async()=>{
+ const {api}=fixture();const json=api.json.bind(api);api.json=(path,...args)=>path.endsWith('/term-list')?Promise.resolve({code:1000,params:{list:[{id:1,term_name:'2026-2027-1'},{id:2,term_name:'2025-2026（未标注学期）'},{id:3,term_name:'2021-2022试用'},{id:4,term_name:'2020-2021-2'},{id:5,term_name:'2023-2024'}]}}):json(path,...args);
+ assert.deepEqual((await api.filters()).terms,[{id:'1',name:'2026-2027-1'},{id:'3',name:'2021-2022试用'}]);
+});
+
+test('structured term names are displayed as canonical strings while unknown objects are excluded',async()=>{
+ const {api}=fixture(),json=api.json.bind(api);api.json=(path,...args)=>path.endsWith('/term-list')?Promise.resolve({code:1000,params:{list:[{id:7,term_name:{name:'2026-2027 第一学期'}},{id:8,term_name:{id:8}}]}}):json(path,...args);
+ assert.deepEqual((await api.filters()).terms,[{id:'7',name:'2026-2027-1'}]);
+});

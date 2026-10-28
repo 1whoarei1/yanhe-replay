@@ -45,3 +45,9 @@ scripts are fetched from a CDN at runtime.
 browser tests. [FFmpeg](https://ffmpeg.org/) generates local synthetic test media.
 Neither tool is bundled with the extension; FFmpeg's license depends on the build
 installed by the developer. Generated fixtures contain no classroom recordings.
+
+## Yanhekt-AutoSlides：协议与索引来源
+
+感谢 [bit-admin/Yanhekt-AutoSlides](https://github.com/bit-admin/Yanhekt-AutoSlides) 的公开 session 索引、在线查询 API 及旧站元数据研究。参考修订 `746cd87ccc4da59cb838adc023200531aa379a85` 的 `share/docs/api.md` 和 `indexer/src/yanhekt.ts`；上游采用 [Apache-2.0](https://github.com/bit-admin/Yanhekt-AutoSlides/blob/746cd87ccc4da59cb838adc023200531aa379a85/LICENSE)。本项目依据公开 HTTP 契约独立编写客户端，没有复制上游实现模块、打包加密数据库或引入构建密钥。在线索引仍在完善，实际覆盖与可用性由该服务决定。
+
+HLS playback uses the full hls.js 1.7.3 build so platform-provided alternate audio playlists can be loaded. The upstream Apache-2.0 license remains included.

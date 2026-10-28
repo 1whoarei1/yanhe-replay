@@ -56,7 +56,7 @@ try {
  await page.waitForFunction(()=>document.querySelector('video').currentTime>.2&&document.querySelector('video').videoWidth>0,undefined,{timeout:15000});
  assert.equal(await page.locator('#video').evaluate(v=>v.playbackRate),1);
  report.checks.push('synthetic HLS decodes in real Edge at 1x; live ignores stored replay progress and hides lyric controls');
- await page.getByRole('button',{name:'回到直播',exact:true}).click();
+ await page.locator('#control-settings').click();await page.getByRole('button',{name:'回到直播',exact:true}).click();await page.locator('#control-settings').click();
  await page.waitForFunction(()=>document.querySelector('video').currentTime>3,undefined,{timeout:15000});
  report.checks.push('go-live control seeks to the available buffered edge');
  await page.screenshot({path:join(output,'live.png'),fullPage:true});
@@ -75,6 +75,10 @@ try {
  await page.getByRole('button',{name:/FLV测试/}).click();await page.getByRole('button',{name:'播放直播',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('video').currentTime>.2&&document.querySelector('video').videoWidth>0,undefined,{timeout:15000});
  assert.ok(requests.some(r=>r.path.endsWith('.flv')&&r.method==='GET'));report.checks.push('bundled mpegts FLV transport decodes the synthetic H264 fixture');
+ await page.locator('#video').evaluate(v=>{v.pause();v.requestVideoFrameCallback((_,meta)=>window.flvLatestFrame=meta.mediaTime);});await page.locator('#control-settings').click();await page.locator('#timely-mode').click();await page.locator('#control-settings').click();await page.locator('#video').scrollIntoViewIfNeeded();
+ await page.waitForFunction(()=>{const v=document.getElementById('video');return v.buffered.length&&v.paused&&v.buffered.end(v.buffered.length-1)-v.currentTime<.1&&window.flvLatestFrame>=v.buffered.end(v.buffered.length-1)-.1;});
+ report.checks.push('timely mode follows the decoded buffered edge of FLV without resuming a paused video');
+
  await page.getByRole('button',{name:'回放',exact:true}).click();await page.getByRole('button',{name:/回放测试/}).click();
  await page.getByRole('button',{name:'播放回放',exact:true}).waitFor();
  assert.equal(await page.locator('.transcript-pane').isVisible(),true);assert.equal(await page.locator('#go-live').isVisible(),false);report.checks.push('switching to replay restores transcript layout and hides go-live');

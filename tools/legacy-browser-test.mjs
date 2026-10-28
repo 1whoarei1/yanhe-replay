@@ -19,8 +19,9 @@ try{
       if(url.pathname==='/v1/user')return json({id:7,badge:'fixture-badge'});
       if(url.pathname==='/v1/auth/video/token')return json({token:'video_fixture',now:100,expired_at:700});
       if(url.pathname==='/v1/live'){const session=url.searchParams.get('id')==='788580'?999999:920536;return json({id:Number(url.searchParams.get('id')),session_id:String(session),course:{id:71988,name_zh:'（英）纳米材料与物理'},session:{id:session,course_id:71988},status:url.searchParams.get('id')==='788580'?2:1,target:'https://cvideo.yanhekt.cn/play/test.m3u8',target_vga:'https://cvideo.yanhekt.cn/play/test.m3u8'});}
-      if(url.pathname==='/v1/course/session')return json({id:Number(url.searchParams.get('session_id')),course_id:52238});
-      if(url.pathname==='/v1/course')return json({id:Number(url.searchParams.get('id')),name_zh:url.searchParams.get('id')==='77464'?'数据结构与算法设计（C描述）':url.searchParams.get('id')==='71988'?'（英）纳米材料与物理':'模拟电子学A（Ⅱ）',professors:[{name:'测试教师'}],school_year:'2024-2025',semester:1});
+      if(url.pathname==='/v1/course/session'){const session=url.searchParams.get('session_id');return json({id:Number(session),course_id:['71990','72000'].includes(session)?9397:session==='281490'?30226:52238});}
+      if(url.pathname==='/v1/course')return json({id:Number(url.searchParams.get('id')),name_zh:({'71990':'（英）材料电化学理论与应用','9397':'离散数学Ⅱ','30226':'机器学习实践','77464':'数据结构与算法设计（C描述）','71988':'（英）纳米材料与物理'})[url.searchParams.get('id')]||'模拟电子学A（Ⅱ）',professors:[{name:'测试教师'}],school_year:'2024-2025',semester:1});
+      if(url.pathname==='/v2/course/session/list'&&['9397','30226'].includes(url.searchParams.get('course_id'))){const rows=url.searchParams.get('course_id')==='9397'?[[71990,[301,302]],[72000,[303]]]:[[281490,[304]]];return json(rows.map(([session,parts])=>({id:session,title:'示例课次',started_at:'2024-12-01 08:00:00',videos:parts.map(video=>({id:video,duration:5,main:'https://cvideo.yanhekt.cn/play/test.m3u8'}))})));}
       if(url.pathname==='/v2/course/session/list')return json(url.searchParams.get('course_id')==='77464'?[]:Array.from({length:16},(_,i)=>({id:url.searchParams.get('course_id')==='71988'&&i===0?920536:100+i,title:`第${i+1}节`,started_at:`2024-12-${String(i+1).padStart(2,'0')} 08:00:00`,videos:[{id:200+i,duration:'5',main:'https://cvideo.yanhekt.cn/play/test.m3u8',vga:'https://cvideo.yanhekt.cn/play/test.m3u8'}]})));
       if(url.pathname==='/v1/video/subtitle/list')return json([{language:'zh',url:'https://coss.yanhekt.cn/captions/test.vtt'}]);
     }
@@ -39,7 +40,7 @@ try{
   await page.locator('.lecture-item').first().click();await page.locator('.subtitle-item').first().waitFor();assert.equal(await page.locator('.subtitle-item').count(),2);
   assert.ok(!requests.some(row=>row.host==='cvideo.yanhekt.cn'));report.checks.push('old platform VTT displayed without ASR or preloading video');
   await page.getByRole('button',{name:'播放回放',exact:true}).click();await page.waitForFunction(()=>document.querySelector('video').currentTime>.25&&document.querySelector('video').videoWidth>0,null,{timeout:15000});
-  assert.equal(await page.getByRole('button',{name:'主画面',exact:true}).getAttribute('aria-pressed'),'true');report.checks.push('legacy signed HLS playlist and segments decode in Chromium');
+  assert.equal(await page.locator('#classroom').getAttribute('aria-pressed'),'true');report.checks.push('legacy signed HLS playlist and segments decode in Chromium');
   await page.locator('#subtitle-calibration summary').click();await page.locator('#subtitle-offset').fill('0.5');await page.getByRole('button',{name:'应用',exact:true}).click();
   await page.waitForFunction(async()=>Boolean((await chrome.storage.local.get('subtitleOffset:legacy:52238:100:200:classroom'))['subtitleOffset:legacy:52238:100:200:classroom']));report.checks.push('old calibration saved in a separate platform namespace');
   await page.screenshot({path:join(output,'legacy-mock.png'),fullPage:true});
@@ -51,6 +52,19 @@ try{
   await page.locator('#course-input').fill('https://www.yanhekt.cn/session/100');await page.getByRole('button',{name:'读取课程',exact:true}).click();
   await page.getByRole('heading',{name:'模拟电子学A（Ⅱ）',exact:true}).waitFor();
   await page.waitForFunction(()=>document.querySelector('.lecture-item.selected')?.dataset.id==='100:200');report.checks.push('pasted old replay link resolves its course and selects the corresponding recording');
+  await page.locator('#course-input').fill('https://www.yanhekt.cn/course/71990');await page.getByRole('button',{name:'读取课程',exact:true}).click();await page.getByRole('heading',{name:'（英）材料电化学理论与应用',exact:true}).waitFor();
+  await page.locator('#course-input').fill('https://www.yanhekt.cn/session/71990');await page.getByRole('button',{name:'读取课程',exact:true}).click();await page.getByRole('heading',{name:'离散数学Ⅱ',exact:true}).waitFor();await page.locator('[data-id="71990:301"].selected').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('legacy_session'),'71990');assert.equal(new URL(page.url()).searchParams.has('legacy'),false);assert.match(await page.locator('#course-meta').innerText(),/9397/);
+  assert.equal(await page.locator('#site-link').getAttribute('href'),'https://www.yanhekt.cn/session/71990');
+  await page.locator('[data-id="71990:302"]').click();await page.waitForURL(u=>u.searchParams.get('legacy_video')==='302');await page.reload();await page.locator('[data-id="71990:302"].selected').waitFor();
+  const resumed=await context.newPage();await resumed.goto(`chrome-extension://${id}/player.html`);await resumed.locator('[data-id="71990:302"].selected').waitFor();assert.equal(new URL(resumed.url()).searchParams.get('legacy_session'),'71990');await resumed.close();
+  await page.locator('[data-id="72000:303"]').click();await page.waitForURL(u=>u.searchParams.get('legacy_session')==='72000');assert.equal(await page.locator('#course-input').inputValue(),'https://www.yanhekt.cn/session/72000');await page.reload();await page.locator('[data-id="72000:303"].selected').waitFor();
+  report.checks.push('course/71990 and session/71990 resolve different subjects; selected sessions and video parts survive reload and reopening the player');
+  await page.locator('#course-input').fill('https://www.yanhekt.cn/session/281490');await page.getByRole('button',{name:'读取课程',exact:true}).click();await page.getByRole('heading',{name:'机器学习实践',exact:true}).waitFor();await page.locator('[data-id="281490:304"].selected').waitFor();assert.match(await page.locator('#course-meta').innerText(),/30226/);
+  await page.screenshot({path:join(output,'legacy-session-identity.png'),fullPage:true});
+  await original.evaluate(()=>history.pushState({},'','/session/71990'));
+  const [sessionLaunch]=await Promise.all([context.waitForEvent('page'),original.locator('#yanhe-replay-open').click()]);await sessionLaunch.getByRole('heading',{name:'离散数学Ⅱ',exact:true}).waitFor();await sessionLaunch.locator('[data-id^="71990:"].selected').waitFor();assert.equal(new URL(sessionLaunch.url()).searchParams.get('legacy_session'),'71990');await sessionLaunch.close();
+  report.checks.push('the /session/281490 sample resolves course 30226, and the native-page launcher preserves a session target');
   await original.evaluate(()=>history.pushState({},'','/live/788579'));
   const [launched]=await Promise.all([context.waitForEvent('page'),original.locator('#yanhe-replay-open').click()]);
   await launched.getByRole('heading',{name:'（英）纳米材料与物理',exact:true}).waitFor();

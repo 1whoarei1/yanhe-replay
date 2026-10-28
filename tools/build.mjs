@@ -1,12 +1,14 @@
-import { mkdir, copyFile, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, readFile, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const extension = resolve(root, 'extension');
 await mkdir(resolve(extension,'vendor'),{recursive:true});
+await rm(resolve(extension,'vendor/hls.light.min.js'),{force:true});
+try{await copyFile(resolve(root,'local-data/legacy-session-index.json'),resolve(extension,'legacy-session-index.json'));}catch(error){if(error.code!=='ENOENT')throw error;await rm(resolve(extension,'legacy-session-index.json'),{force:true});}
 for (const [source,target] of [
-  ['node_modules/hls.js/dist/hls.light.min.js','hls.light.min.js'],
+  ['node_modules/hls.js/dist/hls.min.js','hls.min.js'],
   ['node_modules/hls.js/LICENSE','hls.LICENSE'],
   ['node_modules/mpegts.js/dist/mpegts.js','mpegts.min.js'],
   ['node_modules/mpegts.js/LICENSE','mpegts.LICENSE'],

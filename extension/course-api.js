@@ -1,5 +1,5 @@
 import {YanheApi} from './api.js';
-import {normalizeCourse} from './catalog-core.js';
+import {normalizeCourse,isModernTerm,termLabel} from './catalog-core.js';
 
 // Same course index used by Refine. Only metadata is requested here.
 export class CourseSearchApi extends YanheApi{
@@ -13,7 +13,7 @@ export class CourseSearchApi extends YanheApi{
   ]);
   if(!Array.isArray(terms.params?.list)||!colleges.params?.data)throw new Error('课程筛选信息格式已变化');
   const departments=new Map();const walk=node=>{if(Array.isArray(node))node.forEach(walk);else if(node&&typeof node==='object'){if(/^\d{1,12}$/.test(String(node.id))&&node.display_name)departments.set(String(node.id),{id:String(node.id),name:String(node.display_name)});Object.values(node).filter(x=>x&&typeof x==='object').forEach(walk);}};walk(colleges.params.data);
-  this.filterCache={scope,at:Date.now(),terms:terms.params.list.filter(t=>/^\d{1,12}$/.test(String(t.id))).map(t=>({id:String(t.id),name:String(t.term_name)})),colleges:[...departments.values()]};return this.filterCache;
+  this.filterCache={scope,at:Date.now(),terms:terms.params.list.filter(t=>/^\d{1,12}$/.test(String(t.id))&&isModernTerm(t.term_name)).map(t=>({id:String(t.id),name:termLabel(t.term_name)})),colleges:[...departments.values()]};return this.filterCache;
  }
  async search(query='',{page=1,term='',college='',signal}={}){
   const q=String(query).trim();if(q.length>512||!Number.isSafeInteger(page)||page<1||page>10000)throw new Error('课程搜索条件无效');

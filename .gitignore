@@ -12,3 +12,5 @@ Thumbs.db
 *.zip
 
 .lab-tmp/
+local-data/
+extension/legacy-session-index.json

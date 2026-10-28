@@ -42,4 +42,6 @@ test('legacy content bridge reads only localStorage.auth for our player and neve
   });
   handler({type:'READ_LEGACY_AUTH'},{id,url:'https://www.yanhekt.cn/course/52238'},value=>{reply=value;});assert.equal(reply,undefined);assert.equal(reads,0);
   handler({type:'READ_LEGACY_AUTH'},{id,url:player+'?legacy=52238'},value=>{reply=value;});assert.equal(reply.token,'c'.repeat(32));assert.equal(reads,1);
+  for(const sender of [{id,url:`chrome-extension://${id}/download.html.evil`},{id:'other-extension',url:`chrome-extension://${id}/download.html`}])handler({type:'READ_LEGACY_AUTH'},sender,()=>assert.fail('untrusted sender'));
+  assert.equal(reads,1);handler({type:'READ_LEGACY_AUTH'},{id,url:`chrome-extension://${id}/download.html?course=9397`},value=>{reply=value;});assert.equal(reads,2);assert.equal(reply.token,'c'.repeat(32));
 });

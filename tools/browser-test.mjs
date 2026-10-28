@@ -49,6 +49,7 @@ try {
   const rootCookies=await worker.evaluate(()=>chrome.cookies.getAll({url:'https://aita.yanhekt.cn/',name:'_token'}));assert.equal(rootCookies.length,0);
   await page.goto(`chrome-extension://${id}/player.html?course=110118`);
   await page.getByRole('heading',{name:'人机协同的智能物联网应用设计',exact:true}).waitFor({timeout:15000});
+  await page.locator('.lecture-item').nth(3).waitFor();
   assert.equal(await page.locator('.lecture-item').count(),4);report.checks.push('four nested replays, excludes future live session');
   report.checks.push('portal-path cookie invisible at root, double-encoded opaque bearer authenticates');
   await page.getByRole('button',{name:/9月22日/}).click();await page.getByRole('button',{name:'播放回放',exact:true}).waitFor();
@@ -59,8 +60,8 @@ try {
   await page.screenshot({path:join(output,'desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'播放回放',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('video').currentTime>.25,{},{timeout:15000});report.checks.push('synthetic MP4 decoded and playback time advances');
-  assert.match(await page.locator('.subtitle-item.active').innerText(),/人机协同/);await page.waitForFunction(()=>document.querySelector('video').textTracks[0]?.mode==='showing');report.checks.push('active lyric and native video captions follow playback time');
-  await page.getByRole('button',{name:'教室画面',exact:true}).click();
+  assert.match(await page.locator('.subtitle-item.active').innerText(),/人机协同/);await page.waitForFunction(()=>document.querySelector('video').textTracks[0]?.mode==='hidden');report.checks.push('active lyric and custom video captions follow playback time');
+  await page.locator('#control-settings').click();await page.getByRole('button',{name:'教室画面',exact:true}).click();await page.locator('#control-settings').click();
   await page.waitForFunction(()=>document.querySelector('video').currentTime>.6 && document.querySelector('video').readyState>=2,{},{timeout:15000});
   assert.ok(requests.some(r=>r.path.endsWith('.m3u8')));assert.ok(requests.some(r=>r.path.endsWith('.ts')));report.checks.push('synthetic HLS playlist and signed segments decode after view switch');
   await page.locator('#video').evaluate(video=>video.pause());
@@ -85,7 +86,7 @@ try {
   await page.getByRole('searchbox',{name:'搜索字幕'}).fill('物联网');assert.equal(await page.locator('.subtitle-item').count(),1);await page.locator('.subtitle-item').click();
   await page.waitForFunction(()=>document.querySelector('video').currentTime>=2.9);report.checks.push('subtitle filtering and timestamp seek');
   await page.waitForFunction(()=>document.querySelector('.subtitle-item.active')?.textContent.includes('物联网'));
-  await page.waitForFunction(()=>[...document.querySelector('video').textTracks].some(t=>t.mode==='showing'&&t.activeCues?.length===1&&t.activeCues[0].text.includes('物联网')));report.checks.push('video overlay and current-cue panel agree after seeking');
+  await page.waitForFunction(()=>[...document.querySelector('video').textTracks].some(t=>t.mode==='hidden'&&t.activeCues?.length===1&&t.activeCues[0].text.includes('物联网')));await page.waitForFunction(()=>!document.getElementById('video-caption').hidden&&document.getElementById('video-caption').textContent.includes('物联网'));report.checks.push('custom video overlay, hidden native cue and current-cue panel agree after seeking');
   assert.equal(await page.locator('.subtitle-item').count(),827);assert.equal(await page.getByRole('searchbox',{name:'搜索字幕'}).inputValue(),'');report.checks.push('clicking a search result seeks and restores the full following lyric list');
   await page.locator('#subtitle-list').focus();await page.keyboard.press('PageDown');assert.equal(await page.locator('#subtitle-mode').innerText(),'正在浏览字幕');
   await page.getByRole('button',{name:'回到当前句',exact:true}).click();report.checks.push('keyboard scrolling pauses follow, return restores it');
@@ -93,7 +94,7 @@ try {
   await page.getByRole('searchbox',{name:'搜索字幕'}).fill('物联网');await page.locator('.subtitle-item').press('Enter');
   await page.waitForFunction(()=>document.querySelector('video').readyState>=2&&document.querySelector('video').currentTime>=3);
   assert.equal(await page.locator('.subtitle-item.active').getAttribute('aria-current'),'true');report.checks.push('keyboard-selecting a lyric before playback starts from its timestamp');
-  assert.equal(await page.locator('#video').evaluate(video=>[...video.textTracks].filter(track=>track.mode==='showing').length),1);report.checks.push('only one native caption track remains showing after switching views and lectures');
+  assert.equal(await page.locator('#video').evaluate(video=>[...video.textTracks].filter(track=>track.mode==='hidden').length),1);report.checks.push('only one synchronized hidden native track remains after switching views and lectures');
   await page.screenshot({path:join(output,'lyrics-following.png'),fullPage:true});
   report.calibrationStage='seek video to 90';
   await page.locator('#video').evaluate(video=>{video.pause();video.currentTime=90;});
@@ -109,7 +110,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('.subtitle-item.active')?.textContent.includes('时间校准测试'));
   assert.equal(await page.locator('.subtitle-item.active time').innerText(),'1:30');
   report.calibrationStage='native caption updates while paused';
-  await page.waitForFunction(()=>[...document.querySelector('video').textTracks].some(t=>t.mode==='showing'&&t.activeCues?.length===1&&t.activeCues[0].text.includes('时间校准测试')));
+  await page.waitForFunction(()=>[...document.querySelector('video').textTracks].some(t=>t.mode==='hidden'&&t.activeCues?.length===1&&t.activeCues[0].text.includes('时间校准测试')));
   await page.waitForFunction(()=>document.getElementById('calibration-status').textContent.includes('已保存'));
   report.calibrationStage='calibrated click seeks';
   report.checks.push('aligning raw 1:08 to video 1:30 gives +22s; video position stays fixed and native captions and lyrics agree');
@@ -121,14 +122,14 @@ try {
   await page.waitForFunction(()=>document.getElementById('calibration-status').textContent.includes('已保存'));report.checks.push('positive and negative nudges and typed fractional seconds apply and save');
   await page.screenshot({path:join(output,'subtitle-calibration.png'),fullPage:true});
   report.calibrationStage='offsets isolated between views';
-  await page.locator('#video').evaluate(video=>{video.currentTime=1;});await page.getByRole('button',{name:'教室画面',exact:true}).click();
+  await page.locator('#video').evaluate(video=>{video.currentTime=1;});await page.locator('#control-settings').click();await page.getByRole('button',{name:'教室画面',exact:true}).click();await page.locator('#control-settings').click();
   await page.waitForFunction(()=>document.querySelector('video').readyState>=2);assert.equal(await page.locator('#subtitle-offset').inputValue(),'0');
   await page.locator('#subtitle-offset').fill('-0.5');await page.getByRole('button',{name:'应用',exact:true}).click();
   await page.locator('#video').evaluate(video=>{video.pause();video.currentTime=.25;});
-  await page.waitForFunction(()=>[...document.querySelector('video').textTracks].some(t=>t.mode==='showing'&&t.activeCues?.length===1&&t.activeCues[0].text.includes('人机协同')));
+  await page.waitForFunction(()=>[...document.querySelector('video').textTracks].some(t=>t.mode==='hidden'&&t.activeCues?.length===1&&t.activeCues[0].text.includes('人机协同')));
   assert.equal(await page.locator('.subtitle-item.active time').innerText(),'−0:00.5');
   const earlyVtt=await page.locator('#video track').evaluate(async track=>(await fetch(track.src)).text());assert.match(earlyVtt,/00:00:00.000 --> 00:00:02.400/);
-  await page.getByRole('button',{name:'屏幕画面',exact:true}).click();await page.waitForFunction(()=>document.querySelector('video').readyState>=2);
+  await page.locator('#control-settings').click();await page.getByRole('button',{name:'屏幕画面',exact:true}).click();await page.locator('#control-settings').click();await page.waitForFunction(()=>document.querySelector('video').readyState>=2);
   assert.equal(await page.locator('#subtitle-offset').inputValue(),'22.5');report.checks.push('screen and classroom keep separate offsets; early native cues clip at zero');
   await page.waitForFunction(async()=>{const data=await chrome.storage.local.get(['subtitleOffset:110118:b:screen','subtitleOffset:110118:b:classroom']);return data['subtitleOffset:110118:b:screen']?.seconds===22.5&&data['subtitleOffset:110118:b:classroom']?.seconds===-.5;});
   await page.reload();await page.getByRole('button',{name:/9月29日/}).click();await page.waitForFunction(()=>!document.getElementById('play').disabled);

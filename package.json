@@ -1,6 +1,6 @@
 {
   "name": "yanhe-replay",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "延河课堂独立播放器：全校课程搜索、回放与直播、双画面、视频下载、歌词字幕与校准。",
@@ -20,7 +20,13 @@
     "test:fixtures": "node tools/generate-fixtures.mjs",
     "package": "python tools/package.py",
     "test:browser:upgrade": "node tools/upgrade-browser-test.mjs",
-    "test:browser:download": "node tools/video-download-browser-test.mjs"
+    "test:browser:download": "node tools/video-download-browser-test.mjs",
+    "test:browser:index": "node tools/index-browser-test.mjs",
+    "test:browser:self-index": "node tools/self-index-browser-test.mjs",
+    "test:browser:layout": "node tools/viewer-layout-browser-test.mjs",
+    "test:browser:live-features": "node tools/live-features-browser-test.mjs",
+    "test:browser:streams": "node tools/three-stream-browser-test.mjs",
+    "test:browser:imports": "node tools/catalog-import-browser-test.mjs"
   },
   "dependencies": {
     "blueimp-md5": "2.19.0",
