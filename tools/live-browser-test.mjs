@@ -71,7 +71,7 @@ try {
  report.checks.push('page permission false still permits a platform-provided stream that the media service serves successfully');
  await page.getByRole('button',{name:/备用测试/}).click();await page.getByRole('button',{name:'播放直播',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('video').currentTime>.2&&document.querySelector('video').readyState>=2,undefined,{timeout:15000});
- assert.equal(await page.locator('#screen').getAttribute('aria-pressed'),'true');report.checks.push('404 main HLS falls back to a platform-provided PPT HLS stream');
+ assert.equal(await page.locator('#primary-view').inputValue(),'screen');report.checks.push('404 main HLS falls back to a platform-provided PPT HLS stream');
  await page.getByRole('button',{name:/FLV测试/}).click();await page.getByRole('button',{name:'播放直播',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('video').currentTime>.2&&document.querySelector('video').videoWidth>0,undefined,{timeout:15000});
  assert.ok(requests.some(r=>r.path.endsWith('.flv')&&r.method==='GET'));report.checks.push('bundled mpegts FLV transport decodes the synthetic H264 fixture');

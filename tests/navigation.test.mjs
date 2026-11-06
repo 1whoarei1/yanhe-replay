@@ -5,6 +5,7 @@ import {runInNewContext} from 'node:vm';
 import md5 from 'blueimp-md5';
 import {parseCourse} from '../extension/core.js';
 import {LegacyYanheApi} from '../extension/legacy-api.js';
+import {AutoSlidesIndex} from '../extension/autoslides-index.js';
 
 test('old live and replay IDs remain distinct from course IDs, including copied Markdown links',()=>{
  assert.deepEqual(parseCourse('https://www.yanhekt.cn/live/788579'),{liveId:'788579',legacy:true});
@@ -20,7 +21,7 @@ function fixture(data){
  const calls=[];
  const api=new LegacyYanheApi({hash:md5,fetcher:async(raw,options)=>{
   const u=new URL(raw);calls.push({path:u.pathname,params:Object.fromEntries(u.searchParams),headers:options.headers});
-  const result=u.pathname==='/v1/course'?{id:Number(u.searchParams.get('id')),name_zh:'（英）纳米材料与物理'}:u.pathname==='/v2/course/session/list'?[]:data;
+  const result=u.pathname==='/v1/course'?{id:Number(u.searchParams.get('id')),name_zh:'（英）纳米材料与物理'}:u.pathname==='/v1/course/session/list'?[]:data;
   return new Response(JSON.stringify({code:0,data:result}));
  }});
  api.authenticate=async()=>{api.token='a'.repeat(32);api.profile={id:7,badge:7};};return {api,calls};
@@ -30,7 +31,7 @@ test('the reported live link resolves to course 71988 and session 920536 through
  const {api,calls}=fixture({id:788579,session_id:'920536',session:{id:920536,course_id:71988},course:{id:71988}});
  const ref=await api.resolve(parseCourse('https://www.yanhekt.cn/live/788579'));
  assert.deepEqual(ref,{id:'71988',legacy:true,liveId:'788579',sessionId:'920536'});
- await api.course(ref.id);
+ await api.describeCourse(ref.id);
  assert.deepEqual(calls[0].params,{id:'788579',with_session:'true',with_course:'true'});
  assert.equal(calls[0].path,'/v1/live');
  assert.equal(calls.find(x=>x.path==='/v1/course').params.id,'71988');
@@ -55,7 +56,7 @@ function background(){
  const runtime={id:'our-extension',getURL:name=>`chrome-extension://our-extension/${name}`,onInstalled:{addListener(){}},onStartup:{addListener(){}},onMessage:{addListener:fn=>{message=fn;}}};
  const chrome={runtime,action:{onClicked:{addListener:fn=>{action=fn;}}},tabs:{create:async value=>{opened.push(value.url);return{id:1};}}};
  const source=readFileSync(new URL('../extension/background.js',import.meta.url),'utf8').replace(/^import .*\r?\n/gm,'');
- runInNewContext(source,{chrome,URL,parseCourse});
+ runInNewContext(source,{chrome,URL,parseCourse,AutoSlidesIndex});
  return {message,action,opened};
 }
 

@@ -44,7 +44,7 @@ try{
    return route.fulfill({contentType:'video/mp4',headers,body:data});
   }
   if(url.hostname==='cbiz.yanhekt.cn'){
-   const data=path==='/v1/user'?{id:7,badge:0}:path==='/v1/course'?{id:9397,name_zh:'离散数学Ⅱ',professors:[{name:'示例教师'}],school_year:'2020-2021',semester:2}:path==='/v2/live/list'?{data:[]}:path==='/v2/course/session/list'?[]:path==='/v1/course/session'?{id:71990,course_id:9397,video_ids:[301],title:'集合与关系',started_at:'2021-04-06 08:00:00'}:path==='/v1/video'?{id:301,main:'https://cvideo.yanhekt.cn/play/timing-room.mp4',vga:'https://cvideo.yanhekt.cn/play/timing.mp4',duration:120}:path==='/v1/video/subtitle/list'?[]:path==='/v1/auth/video/token'?{token:'layout-media',now:1000,expired_at:2000}:null;
+   const data=path==='/v1/user'?{id:7,badge:0}:path==='/v1/course'?{id:9397,name_zh:'离散数学Ⅱ',professors:[{name:'示例教师'}],school_year:'2020-2021',semester:2}:path==='/v2/live/list'?{data:[]}:path==='/v1/course/session/list'?[{id:71990,title:'集合与关系',videos:[{id:301,main:'https://cvideo.yanhekt.cn/play/timing-room.mp4',vga:'https://cvideo.yanhekt.cn/play/timing.mp4',duration:120}]}]:path==='/v1/course/session'?{id:71990,course_id:9397,video_ids:[301],title:'集合与关系',started_at:'2021-04-06 08:00:00'}:path==='/v1/video'?{id:301,main:'https://cvideo.yanhekt.cn/play/timing-room.mp4',vga:'https://cvideo.yanhekt.cn/play/timing.mp4',duration:120}:path==='/v1/video/subtitle/list'?[]:path==='/v1/auth/video/token'?{token:'layout-media',now:1000,expired_at:2000}:null;
    assert.notEqual(data,null,'Unexpected legacy request '+path);return json({code:0,data});
   }
   if(path==='/userapi/v1/infosimple')return json({code:200,params:{id:7,tenant_id:21,phone:'13000000000',account:'fixture'}});

@@ -5,13 +5,12 @@ import {readFile,writeFile,mkdir,mkdtemp,rm,cp} from 'node:fs/promises';
 import {resolve,dirname,join,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
-import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),pkg=JSON.parse(await readFile(join(root,'package.json'),'utf8')),refine=pkg.name==='yanhe-refine';
 const scratch=await mkdtemp(join(tmpdir(),'yanhe-self-index-')),ext=join(scratch,'extension'),out=join(root,'test-results');await mkdir(out,{recursive:true});await cp(resolve(process.env.EXTENSION_PATH||join(root,'extension')),ext,{recursive:true});
-const raw=await readFile(join(ext,'legacy-session-index.json')),catalog=JSON.parse(raw),courses=new Map(catalog.courses.map(c=>[String(c.id),c]));
+const raw=await readFile(join(ext,'课程目录/旧版课次目录.json')).catch(()=>readFile(join(ext,'legacy-session-index.json'))),catalog=JSON.parse(raw),courses=new Map(catalog.courses.map(c=>[String(c.id),c]));
 if(refine)await writeFile(join(ext,'build-info.json'),JSON.stringify({version:pkg.version,catalog:null}));
-const report={version:pkg.version,mode:'real self-collected snapshot and live anonymous public metadata; fixture login/profile and host shell; no media playback',snapshot:{sha256:createHash('sha256').update(raw).digest('hex'),generatedAt:catalog.generatedAt,courses:courses.size,sessions:catalog.coverage.sessions,partial:catalog.partial},checks:[],liveReads:[]};
+const report={version:pkg.version,mode:'real self-collected snapshot and live anonymous public metadata; fixture login/profile and host shell; no media playback',snapshot:{generatedAt:catalog.generatedAt,courses:courses.size,sessions:catalog.coverage.sessions,partial:catalog.partial},checks:[],liveReads:[]};
 let context,page;
 try{
  context=await chromium.launchPersistentContext(join(scratch,'profile'),{executablePath:process.env.BROWSER_EXECUTABLE||'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',headless:true,ignoreDefaultArgs:['--disable-extensions'],args:[`--disable-extensions-except=${ext}`,`--load-extension=${ext}`],viewport:{width:1440,height:1000}});
@@ -24,13 +23,15 @@ try{
   if(u.origin==='https://share.ruc.edu.kg'){upstream.push(path);return route.abort();}
   if(u.hostname==='cbiz.yanhekt.cn'){
    if(path==='/v1/user')return json({code:0,data:{id:731002,badge:0}}); // Authentication is explicitly outside this test.
-   assert.ok(['/v1/course','/v2/course/session/list','/v1/course/session','/v1/video','/v1/video/subtitle/list'].includes(path),'Unexpected school API '+path);
+   if(path==='/v2/live/list')return json({code:0,data:{data:[]}});
+   assert.ok(['/v1/course','/v1/course/session/list','/v1/course/session','/v1/video','/v1/video/subtitle/list'].includes(path),'Unexpected school API '+path);
    const headers={...req.headers(),origin:'https://www.yanhekt.cn',referer:'https://www.yanhekt.cn/'};delete headers.authorization;delete headers.cookie;
    const actual=await route.fetch({headers,timeout:25000,maxRedirects:0});
    const body=await actual.json();
    const record={path,status:actual.status(),code:body.code};
    if(path==='/v1/course/session')Object.assign(record,{session:body.data?.id,course:body.data?.course_id,videoIds:body.data?.video_ids});
    if(path==='/v1/video')record.video=body.data?.id;
+   if(path==='/v1/course/session/list'){const rows=Array.isArray(body.data)?body.data:body.data?.data||[];record.sessions=rows.map(row=>({session:String(row.id),course:u.searchParams.get('course_id'),videoIds:(Array.isArray(row.videos)?row.videos:row.videos?[row.videos]:[]).map(video=>String(video.id))}));}
    report.liveReads.push(record);
    return route.fulfill({response:actual,contentType:'application/json',body:JSON.stringify(body)}).catch(()=>{});
   }
@@ -54,7 +55,7 @@ try{
  }else{
   await page.goto(`chrome-extension://${id}/player.html`);await page.locator('#browse-courses').click();await page.locator('#catalog-source').selectOption('legacy');
   await page.locator('#catalog-term option[value="2025-2026-2"]').waitFor({state:'attached'});await page.locator('#catalog-term').selectOption('2025-2026-2');
-  await page.waitForFunction(n=>document.getElementById('catalog-status').textContent.includes(String(n))&&!document.getElementById('catalog-next').disabled,historical.length);
+  await page.waitForFunction(n=>document.getElementById('catalog-status').textContent.includes(n.toLocaleString('zh-CN'))&&!document.getElementById('catalog-next').disabled,historical.length);
   for(let i=2;i<=6;i++){await page.locator('#catalog-next').click();await page.waitForFunction(n=>document.getElementById('catalog-page').textContent.startsWith(n+' /')&&document.getElementById('catalog-submit').getAttribute('aria-busy')==='false',i);}
   assert.equal(await page.locator('.catalog-row').count(),40);await page.locator('#catalog-close').click();
  }
@@ -67,16 +68,16 @@ try{
  }
  async function select(player,courseId,session){
   const beforeVideos=report.liveReads.filter(r=>r.path==='/v1/video').length;
-  await player.locator(`[data-id="${session}:pending"]`).waitFor();await player.locator(`[data-id="${session}:pending"]`).click();
-  await player.waitForFunction(s=>document.querySelector(`[data-id^="${s}:"][aria-current="true"]`)&&(!document.getElementById('play').disabled||document.getElementById('stage-detail').textContent.includes('此课次暂未提供回放')),session,{timeout:45000});
-  const actual=report.liveReads.find(r=>r.path==='/v1/course/session'&&String(r.session)===session&&String(r.course)===courseId);assert.ok(actual,'Live parent course must agree with the snapshot');
+  await player.locator(`[data-id^="${session}:"]`).waitFor();await player.locator(`[data-id^="${session}:"]`).click();
+  await player.waitForFunction(s=>document.querySelector(`[data-id^="${s}:"][aria-current="true"]`)&&(!document.getElementById('play').disabled||document.getElementById('stage-detail').textContent.includes('此课次暂未提供')),session,{timeout:45000});
+  const actual=report.liveReads.flatMap(r=>r.sessions||[r]).find(r=>String(r.session)===session&&String(r.course)===courseId);assert.ok(actual,'Live parent course must agree with the snapshot');
   if(!actual.videoIds.length){assert.equal(await player.locator('#play').isDisabled(),true);assert.equal(report.liveReads.filter(r=>r.path==='/v1/video').length,beforeVideos);if(refine)await page.waitForURL(u=>u.pathname==='/session/'+session);else{assert.equal(new URL(page.url()).searchParams.get('legacy_session'),session);assert.equal(new URL(page.url()).searchParams.get('legacy_video'),null);assert.ok((await page.locator('#course-meta').textContent()).includes('课次 ID '+session));}report.checks.push(`real session ${session} has no video IDs: shows unavailable, preserves that session target and never fetches a guessed video`);return null;}
   const selected=await player.locator(`[data-id^="${session}:"][aria-current="true"]`).getAttribute('data-id');assert.match(selected,new RegExp('^'+session+':\\d+$'));
   assert.ok(actual.videoIds.map(String).includes(selected.split(':')[1]));return selected;
  }
  const player=await openCourse('65802');
  console.log(JSON.stringify({event:'course-opened',course:'65802'}));
- for(const sid of courses.get('65802').sessions)await player.locator(`[data-id="${sid}:pending"]`).waitFor();
+ for(const sid of courses.get('65802').sessions)await player.locator(`[data-id^="${sid}:"]`).waitFor();
  report.checks.push('real 信号与系统 course 65802 groups 879786, 879787, 891269, 891272 and 891273 together');
  await select(player,'65802','879786');await select(player,'65802','891269');
  report.checks.push('noncontiguous sessions 879786 and 891269 both verify course 65802 through live metadata; only actual video IDs are used');

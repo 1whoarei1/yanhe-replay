@@ -20,9 +20,9 @@ export class SessionIndex {
     for(const sid of sessions){if(owners.has(sid)&&owners.get(sid)!==id)throw invalid();owners.set(sid,id);}
     courses.set(id,{id,name:row.name.trim()||`旧版课程 ${id}`,number:row.number==null?'':String(row.number),term:row.term||'',teachers:[...row.teachers],sessions});
    }
-   return {courses,partial:data.partial,updatedAt:Date.parse(data.generatedAt)||null,sessionCount:owners.size};
+   return {courses,owners,partial:data.partial,updatedAt:Date.parse(data.generatedAt)||null,sessionCount:owners.size};
   })();
-  const data=await this.flight;signal?.throwIfAborted();return data;
+  const flight=this.flight;let data;try{data=await flight;}catch(error){if(this.flight===flight)this.flight=null;throw error;}signal?.throwIfAborted();return data;
  }
  async terms(signal){const data=await this.load(signal);if(!data)return null;return {terms:[...new Set([...data.courses.values()].map(c=>c.term).filter(Boolean))].sort().reverse(),updatedAt:data.updatedAt,dataset:'self-collected',partial:data.partial,courseCount:data.courses.size,sessionCount:data.sessionCount};}
  async search(query='',{page=1,term='',signal}={}){
@@ -38,4 +38,6 @@ export class SessionIndex {
   return {rows,total:found.length,reportedTotal:found.length,truncated:false,page,pageSize:40,dataset:'self-collected',partial:data.partial};
  }
  async sessions(courseId,signal){const data=await this.load(signal);if(!data)return null;if(!validId(courseId))throw new Error('索引课程编号无效。');const course=data.courses.get(String(courseId));if(!course)throw new Error('自建旧版目录尚未收录这门课程，不代表原站没有回放。');return [...course.sessions];}
+ async course(courseId,signal){if(!validId(courseId))throw new Error('索引课程编号无效。');const data=await this.load(signal);return structuredClone(data?.courses.get(String(courseId))||null);}
+ async owner(sessionId,signal){if(!validId(sessionId))throw new Error('索引课次编号无效。');const data=await this.load(signal);return structuredClone(data?.courses.get(data.owners.get(String(sessionId)))||null);}
 }

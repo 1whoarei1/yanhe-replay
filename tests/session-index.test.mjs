@@ -29,8 +29,8 @@ test('conflicting parent ownership or corrupt local data cannot silently turn in
  await assert.rejects(new SessionIndex({...options(),fetcher:async()=>new Response('{bad')}).load(),/格式无效/);
  const noName=snapshot();noName.courses[0].name='';assert.equal((await new SessionIndex(options(noName)).search('9397')).rows[0].title,'旧版课程 9397');
 });
-test('missing optional snapshot preserves online fallback; cancelled callers are not empty results',async()=>{
+test('missing optional snapshot asks for a local catalog; cancelled callers are not empty results',async()=>{
  const index=new AutoSlidesIndex({snapshotUrl:url,fetcher:async raw=>raw===url?new Response('',{status:404}):response({terms:['2023-2024-1']})});
- assert.deepEqual((await index.terms()).terms,['2023-2024-1']);
+ await assert.rejects(index.terms(),/导入旧版课次目录/);
  const controller=new AbortController();controller.abort();await assert.rejects(new SessionIndex(options()).load(controller.signal),{name:'AbortError'});
 });

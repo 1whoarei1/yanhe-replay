@@ -3,7 +3,6 @@ from pathlib import Path
 import json
 import shutil
 import zipfile
-import hashlib
 import sys
 
 project = Path(__file__).resolve().parents[1]
@@ -17,7 +16,9 @@ if with_sessions:
     assert snapshot['format'] == 'yanhekt-session-index/v1' and snapshot['source']['kind'] == 'self-collected'
 release = project / "dist" / (f"yanhe-replay-{manifest['version']}" + ('-session-test' if with_sessions else ''))
 assert release.resolve().parent == (project / 'dist').resolve()
-release.mkdir(parents=True, exist_ok=True)
+if release.exists():
+    shutil.rmtree(release)
+release.mkdir(parents=True)
 files = []
 for item in sorted(source.rglob('*')):
     if not item.is_file():
@@ -48,28 +49,34 @@ if with_imports:
     modern=datasets['release-catalog.json'];old=datasets['release-session-index.json']
     assert modern['schema']==1 and all(c['platform']=='modern' for c in modern['courses'])
     assert old['format']=='yanhekt-session-index/v1' and old['source']['kind']=='self-collected'
-    text=f"""打开「全校课程」→「导入目录」，依次导入本文件夹的两个 JSON。
+    text=f"""课程目录已内置，打开「全校课程」即可搜索。此文件夹的两个 JSON 也可用于手动更新目录。
 课程目录.json：新版 {len(modern['courses']):,} 门课程。
 旧版课次目录.json：旧版 {len(old['courses']):,} 门课程 / {sum(len(c['sessions']) for c in old['courses']):,} 个 session。
-旧版快照时间：{old['generatedAt']}；采集仍在继续，未收录不代表没有回放。
-导入后目录保存在本浏览器，可离线检索。新版可点「在线查询」读取平台最新列表；观看仍需登录及相应权限。
+旧版快照时间：{old['generatedAt']}。未收录不代表没有回放。
+目录可离线检索，观看需登录及相应权限。
 更新目录时重新导入同类文件即可。不含旧版 XLSX、账号数据、观看记录或媒体地址。
 感谢 bit-admin / Yanhekt-AutoSlides 的公开索引器，旧版快照为我们独立采集的元数据。
 """
     (release/directory/'导入说明.txt').write_text(text,encoding='utf8');files.append(directory/'导入说明.txt')
 archive = release.parent / (release.name + '.zip')
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as package:
-    for relative in files:
+    for relative in sorted(set(files)):
         package.write(release / relative, relative.as_posix())
 with zipfile.ZipFile(archive) as package:
     assert 'manifest.json' in package.namelist()
     assert not any(name.startswith('extension/') for name in package.namelist())
-    assert not any(name.lower().endswith(('.xlsx','.xls','.csv','.tsv')) or ('catalog' in name.lower() and name.lower().endswith('.json') and not with_imports) for name in package.namelist()), 'Course tables must not be distributed'
+    assert not any(name.lower().endswith(('.xlsx','.xls','.csv','.tsv')) for name in package.namelist())
+    assert len(package.namelist()) == len(set(package.namelist()))
+    bundled = json.loads(package.read('bundled-catalogs.json'))
+    if with_imports:
+        assert set(bundled['catalogs']) == {'modern', 'sessions'}
+    for entry in bundled['catalogs'].values():
+        assert entry['path'] in package.namelist()
     assert package.testzip() is None
     assert ('legacy-session-index.json' in package.namelist()) == with_sessions
     for relative in files:
         assert package.read(relative.as_posix()) == (release / relative).read_bytes()
-report = {'version': manifest['version'], 'folder': str(release), 'zip': str(archive), 'files': len(files), 'bytes': archive.stat().st_size, 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'verified': True}
+report = {'version': manifest['version'], 'folder': str(release), 'zip': str(archive), 'files': len(files), 'bytes': archive.stat().st_size, 'verified': True}
 (project / 'test-results').mkdir(exist_ok=True)
 (project / 'test-results' / 'package-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
 print(json.dumps(report, ensure_ascii=False))

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "延河回放助手",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "延河课堂全校课程搜索、回放与直播，支持双画面、视频下载、歌词字幕与时间校准。",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -11,8 +11,7 @@
   ],
   "host_permissions": [
     "https://*.yanhekt.cn/*",
-    "https://yanhe.bit.edu.cn/*",
-    "https://share.ruc.edu.kg/*"
+    "https://yanhe.bit.edu.cn/*"
   ],
   "action": {
     "default_title": "打开延河回放助手",
@@ -48,6 +47,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://share.ruc.edu.kg https://*.yanhekt.cn; media-src 'self' blob: https://*.yanhekt.cn; img-src 'self' data:; style-src 'self'; base-uri 'none'; frame-ancestors 'none';"
-  }
+    "extension_pages": "script-src 'self'; worker-src 'self'; object-src 'none'; connect-src 'self' https://*.yanhekt.cn; media-src 'self' blob: https://*.yanhekt.cn; img-src 'self' data:; style-src 'self'; base-uri 'none'; frame-ancestors 'none';"
+  },
+  "version_name": "0.6.0"
 }

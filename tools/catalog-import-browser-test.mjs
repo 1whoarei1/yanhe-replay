@@ -27,7 +27,7 @@ try{
   if(url.hostname==='cbiz.yanhekt.cn'){
    if(path==='/v1/user')return json({code:0,data:{id:7,badge:0}});
    if(path==='/v1/course')return json({code:0,data:{id:sample.id,name_zh:sample.name,school_year:sample.term.slice(0,9),semester:Number(sample.term.at(-1)),professors:sample.teachers.map(name=>({name}))}});
-   if(path==='/v2/live/list')return json({code:0,data:{data:[]}});if(path==='/v2/course/session/list')return json({code:0,data:[]});
+   if(path==='/v2/live/list')return json({code:0,data:{data:[]}});if(path==='/v1/course/session/list')return json({code:0,data:[]});
    if(path==='/v1/course/session')return json({code:0,data:{id:Number(url.searchParams.get('session_id')),course_id:Number(sample.id),title:'尚无录像的课次',video_ids:[],started_at:'2026-01-01 08:00:00'}});
    throw Error('Unexpected old API '+path);
   }
@@ -38,6 +38,18 @@ try{
  page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
  await page.goto(refine?'https://aita.yanhekt.cn/personal/?yh_view=settings':`chrome-extension://${extensionId}/player.html`);
  if(!refine)await page.locator('#browse-courses').click();
+ if(!refine){
+  await page.locator('#catalog-results[aria-busy=false]').waitFor();
+  await page.locator('.catalog-row').first().waitFor();
+  assert.match(await page.locator('#catalog-status').innerText(),/新版目录/);
+  await page.locator('#catalog-source').selectOption('legacy');
+  await page.locator('#catalog-term option').filter({hasText:sample.term}).waitFor({state:'attached'});
+  await page.locator('#catalog-term').selectOption(sample.term);
+  await page.locator('#catalog-query').fill(String(sample.id));
+  await page.locator('#catalog-submit').click();
+  await page.locator(`.catalog-row[data-course="${sample.id}"]`).waitFor();
+  report.checks.push('new installations search both bundled catalogues before any manual import');
+ }
  await page.locator('#catalog-file').setInputFiles(modernPath);const status=page.locator(refine?'#import-state':'#catalog-import-status');await status.filter({hasText:modern.courses.length.toLocaleString('en-US')}).waitFor();report.checks.push('the shipped modern JSON imports through the user-facing file picker');
  await page.locator('#catalog-file').setInputFiles(oldPath);await status.filter({hasText:sessions.toLocaleString('en-US')}).waitFor();report.checks.push('the shipped session JSON imports with explicit course/session totals');
  await page.reload();

@@ -5,8 +5,8 @@ Third-party components retain their original licenses.
 
 ## Shared playback implementation
 
-[1whoarei1/yanhe-refine](https://github.com/1whoarei1/yanhe-refine), v0.9.3
-(revision `8a292f47d7f25a697d01c9bd7c69189ce2edbf5a`, MIT), is the source of the
+[bitoolkit/yanhe-refine](https://github.com/bitoolkit/yanhe-refine), v1.10.2
+(revision `3a767ea71e973ba33e00a7d69b3b076928e401fb`, MIT), is the source of the
 backported dual playback, media downloader, replay cache, legacy live support
 and course metadata normalization. Replay retains its independent interface.
 Protocol documentation: [yanhe-api-reference](https://github.com/1whoarei1/yanhe-api-reference).
@@ -48,6 +48,8 @@ installed by the developer. Generated fixtures contain no classroom recordings.
 
 ## Yanhekt-AutoSlides：协议与索引来源
 
-感谢 [bit-admin/Yanhekt-AutoSlides](https://github.com/bit-admin/Yanhekt-AutoSlides) 的公开 session 索引、在线查询 API 及旧站元数据研究。参考修订 `746cd87ccc4da59cb838adc023200531aa379a85` 的 `share/docs/api.md` 和 `indexer/src/yanhekt.ts`；上游采用 [Apache-2.0](https://github.com/bit-admin/Yanhekt-AutoSlides/blob/746cd87ccc4da59cb838adc023200531aa379a85/LICENSE)。本项目依据公开 HTTP 契约独立编写客户端，没有复制上游实现模块、打包加密数据库或引入构建密钥。在线索引仍在完善，实际覆盖与可用性由该服务决定。
+感谢 [bit-admin/Yanhekt-AutoSlides](https://github.com/bit-admin/Yanhekt-AutoSlides) 的公开 session 索引、在线查询 API 及旧站元数据研究。参考修订 `746cd87ccc4da59cb838adc023200531aa379a85` 的 `share/docs/api.md` 和 `indexer/src/yanhekt.ts`；上游采用 [Apache-2.0](https://github.com/bit-admin/Yanhekt-AutoSlides/blob/746cd87ccc4da59cb838adc023200531aa379a85/LICENSE)。本项目依据公开 HTTP 契约独立编写客户端，没有复制上游实现模块、打包加密数据库或引入构建密钥。当前版本使用随包内置或手动导入的目录，不依赖该在线服务。
 
 HLS playback uses the full hls.js 1.7.3 build so platform-provided alternate audio playlists can be loaded. The upstream Apache-2.0 license remains included.
+
+感谢 [mmck111/yanhekt-player](https://github.com/mmck111/yanhekt-player) 的旧站 v1 往年回放读取思路。本项目使用延河焕新的独立实现，没有复制该项目模块。

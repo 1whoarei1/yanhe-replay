@@ -9,6 +9,7 @@ await rm(resolve(extension,'vendor/hls.light.min.js'),{force:true});
 try{await copyFile(resolve(root,'local-data/legacy-session-index.json'),resolve(extension,'legacy-session-index.json'));}catch(error){if(error.code!=='ENOENT')throw error;await rm(resolve(extension,'legacy-session-index.json'),{force:true});}
 for (const [source,target] of [
   ['node_modules/hls.js/dist/hls.min.js','hls.min.js'],
+  ['node_modules/hls.js/dist/hls.worker.js','hls.worker.js'],
   ['node_modules/hls.js/LICENSE','hls.LICENSE'],
   ['node_modules/mpegts.js/dist/mpegts.js','mpegts.min.js'],
   ['node_modules/mpegts.js/LICENSE','mpegts.LICENSE'],
@@ -16,6 +17,15 @@ for (const [source,target] of [
   ['node_modules/blueimp-md5/js/md5.min.js','md5.min.js'],
   ['node_modules/blueimp-md5/LICENSE.txt','md5.LICENSE']
 ]) await copyFile(resolve(root,source),resolve(extension,'vendor',target));
+const bundled={schema:1,catalogs:{}};
+for(const [kind,file,path] of [['modern','release-catalog.json','课程目录/课程目录.json'],['sessions','release-session-index.json','课程目录/旧版课次目录.json']]){
+ try{
+  const bytes=await readFile(resolve(root,'local-data',file)),snapshot=JSON.parse(bytes),date=snapshot.generatedAt||snapshot.snapshot_date;
+  if(!Date.parse(date))throw new Error('Catalog snapshot date missing: '+file);
+  await mkdir(dirname(resolve(extension,path)),{recursive:true});await writeFile(resolve(extension,path),bytes);bundled.catalogs[kind]={path,date};
+ }catch(error){if(error.code!=='ENOENT')throw error;await rm(resolve(extension,path),{force:true});}
+}
+await writeFile(resolve(extension,'bundled-catalogs.json'),JSON.stringify(bundled,null,2));
 // The icon is a code-drawn play symbol over two classroom rows.
 const crcTable = Array.from({length:256},(_,n) => { let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;return c>>>0; });
 function chunk(type,data) { const t=Buffer.from(type),n=Buffer.alloc(4);n.writeUInt32BE(data.length);let c=0xffffffff;for(const b of Buffer.concat([t,data]))c=crcTable[(c^b)&255]^(c>>>8);const crc=Buffer.alloc(4);crc.writeUInt32BE((c^0xffffffff)>>>0);return Buffer.concat([n,t,data,crc]); }

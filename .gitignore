@@ -14,3 +14,6 @@ Thumbs.db
 .lab-tmp/
 local-data/
 extension/legacy-session-index.json
+
+extension/课程目录/
+extension/bundled-catalogs.json
